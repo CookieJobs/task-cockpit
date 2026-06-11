@@ -125,3 +125,31 @@ class SnapshotTest(unittest.TestCase):
         tid = self.c.add_task(p, "t"); self.c.confirm_drafts()
         self.c.complete_task(tid, outcome="x", cv="", cv_status="pending")
         self.assertEqual(self.c.build_snapshot()["counts"]["achievementsPending"], 1)
+
+
+import subprocess, sys
+
+
+class CliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.env = {**os.environ, "TASK_COCKPIT_DIR": self.tmp}
+        self.script = str(Path(__file__).resolve().parent.parent / "cockpit.py")
+
+    def run_cmd(self, *args):
+        out = subprocess.check_output([sys.executable, self.script, *args], env=self.env)
+        return json.loads(out)
+
+    def test_cli_add_project_and_snapshot(self):
+        res = self.run_cmd("add-project", "--json", json.dumps({"name": "P"}))
+        self.assertTrue(res["id"].startswith("proj_"))
+        snap = self.run_cmd("snapshot")
+        self.assertEqual(snap["projects"][0]["name"], "P")
+
+    def test_cli_add_task_flow(self):
+        pid = self.run_cmd("add-project", "--json", json.dumps({"name": "P"}))["id"]
+        tid = self.run_cmd("add-task", "--json", json.dumps({"project": pid, "title": "T", "priority": "高"}))["id"]
+        self.run_cmd("confirm-drafts")
+        snap = self.run_cmd("snapshot")
+        self.assertEqual(snap["focus"][0]["title"], "T")
+        self.assertFalse(snap["focus"][0]["draft"])

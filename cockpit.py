@@ -164,3 +164,51 @@ def build_snapshot():
         "achievementsPending": sum(1 for a in ach if a["cvStatus"] == "pending"),
     }
     return {"focus": focus, "projects": grouped, "doneToday": done_today, "counts": counts}
+
+
+# --- CLI ---
+
+import argparse, sys
+
+
+def _cli():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command")
+    parser.add_argument("--json", default="{}")
+    args = parser.parse_args()
+    a = json.loads(args.json)
+    cmd = args.command
+    if cmd == "add-project":
+        out = {"id": add_project(a["name"])}
+    elif cmd == "add-task":
+        out = {"id": add_task(a["project"], a["title"], a.get("priority", "中"),
+                              a.get("due", ""), a.get("nextAction", ""), a.get("blocked", False))}
+    elif cmd == "update-task":
+        update_task(a.pop("id"), **a); out = {"ok": True}
+    elif cmd == "confirm-drafts":
+        confirm_drafts(); out = {"ok": True}
+    elif cmd == "complete-task":
+        out = {"id": complete_task(a["id"], a.get("outcome", ""), a.get("reflection", ""),
+                                   a.get("cv", ""), a.get("cv_status", "ready"))}
+    elif cmd == "update-cv":
+        update_achievement_cv(a["id"], a.get("cv"), a.get("cv_status")); out = {"ok": True}
+    elif cmd == "undo":
+        undo_completion(a["id"]); out = {"ok": True}
+    elif cmd == "delete-task":
+        delete_task(a["id"]); out = {"ok": True}
+    elif cmd == "snapshot":
+        out = build_snapshot()
+    elif cmd == "achievements":
+        items = read_achievements()
+        if a.get("project"):
+            items = [i for i in items if i["project"] == a["project"]]
+        if a.get("since"):
+            items = [i for i in items if i["date"] >= a["since"]]
+        out = {"items": items}
+    else:
+        out = {"error": f"unknown command {cmd}"}
+    print(json.dumps(out, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    _cli()
