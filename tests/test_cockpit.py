@@ -87,3 +87,41 @@ class CompletionTest(unittest.TestCase):
         self.assertEqual(len(self.c.read_achievements()), 0)
         tasks = self.c.load_json("tasks.json", {})
         self.assertIn(self.tid, tasks); self.assertEqual(tasks[self.tid]["status"], "进行中")
+
+
+class SnapshotTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_focus_orders_by_priority_then_due(self):
+        p = self.c.add_project("P")
+        self.c.add_task(p, "low", priority="低", due="2026-06-12")
+        self.c.add_task(p, "high-late", priority="高", due="2026-06-20")
+        self.c.add_task(p, "high-soon", priority="高", due="2026-06-12")
+        self.c.confirm_drafts()
+        titles = [f["title"] for f in self.c.build_snapshot()["focus"]]
+        self.assertEqual(titles[:3], ["high-soon", "high-late", "low"])
+
+    def test_focus_capped_at_five(self):
+        p = self.c.add_project("P")
+        for i in range(8): self.c.add_task(p, f"t{i}", priority="高")
+        self.c.confirm_drafts()
+        self.assertEqual(len(self.c.build_snapshot()["focus"]), 5)
+
+    def test_snapshot_groups_by_project_and_counts(self):
+        p = self.c.add_project("P")
+        tid = self.c.add_task(p, "t"); self.c.confirm_drafts()
+        self.c.complete_task(tid, outcome="x", cv="y", cv_status="ready")
+        self.c.add_task(p, "t2", priority="低")
+        snap = self.c.build_snapshot()
+        self.assertEqual(snap["projects"][0]["name"], "P")
+        self.assertEqual(len(snap["doneToday"]), 1)
+        self.assertEqual(snap["counts"]["achievementsReady"], 1)
+
+    def test_counts_track_pending(self):
+        p = self.c.add_project("P")
+        tid = self.c.add_task(p, "t"); self.c.confirm_drafts()
+        self.c.complete_task(tid, outcome="x", cv="", cv_status="pending")
+        self.assertEqual(self.c.build_snapshot()["counts"]["achievementsPending"], 1)

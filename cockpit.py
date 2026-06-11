@@ -134,3 +134,33 @@ def undo_completion(aid):
     task["draft"] = False
     tasks[target["taskId"]] = task
     save_json("tasks.json", tasks)
+
+
+# --- Snapshot / focus ranking ---
+
+_PRIORITY_RANK = {"高": 0, "中": 1, "低": 2}
+
+
+def _focus_key(t):
+    return (_PRIORITY_RANK.get(t.get("priority"), 1), t.get("due") or "9999-99-99")
+
+
+def build_snapshot():
+    projects = load_json("projects.json", {})
+    tasks = load_json("tasks.json", {})
+    enriched = [dict(id=tid, **t) for tid, t in tasks.items()]
+    ordered = sorted(enriched, key=_focus_key)
+    focus = [{**t, "flagged": bool(t.get("blocked"))} for t in ordered[:5]]
+    grouped = []
+    for pid, p in projects.items():
+        if p.get("archived"):
+            continue
+        pts = [t for t in enriched if t["project"] == pid]
+        grouped.append({"id": pid, "name": p["name"], "tasks": pts})
+    ach = read_achievements()
+    done_today = [a for a in ach if a["date"] == _today()]
+    counts = {
+        "achievementsReady": sum(1 for a in ach if a["cvStatus"] == "ready"),
+        "achievementsPending": sum(1 for a in ach if a["cvStatus"] == "pending"),
+    }
+    return {"focus": focus, "projects": grouped, "doneToday": done_today, "counts": counts}
