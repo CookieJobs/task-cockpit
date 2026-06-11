@@ -47,6 +47,12 @@ def add_project(name):
     return pid
 
 
+def update_project(pid, **fields):
+    projects = load_json("projects.json", {})
+    projects[pid].update({k: v for k, v in fields.items() if v is not None})
+    save_json("projects.json", projects)
+
+
 # --- Tasks ---
 
 def add_task(project, title, priority="中", due="", nextAction="", blocked=False):
@@ -98,8 +104,7 @@ def _write_achievements(items):
 
 def complete_task(tid, outcome="", reflection="", cv="", cv_status="ready"):
     tasks = load_json("tasks.json", {})
-    task = tasks.pop(tid)
-    save_json("tasks.json", tasks)
+    task = tasks[tid]
     projects = load_json("projects.json", {})
     pname = projects.get(task["project"], {}).get("name", task["project"])
     aid = _new_id("done")
@@ -111,7 +116,10 @@ def complete_task(tid, outcome="", reflection="", cv="", cv_status="ready"):
         "reflection": reflection, "cv": cv, "cvStatus": cv_status,
         "_task": task
     })
+    # Write achievement FIRST — crash here leaves a duplicate, not a lost item
     _write_achievements(items)
+    tasks.pop(tid)
+    save_json("tasks.json", tasks)
     return aid
 
 
@@ -129,14 +137,15 @@ def update_achievement_cv(aid, cv=None, cv_status=None):
 def undo_completion(aid):
     items = read_achievements()
     target = next(it for it in items if it["id"] == aid)
-    items = [it for it in items if it["id"] != aid]
-    _write_achievements(items)
+    remaining = [it for it in items if it["id"] != aid]
+    # Restore task FIRST — crash here leaves a recoverable duplicate
     tasks = load_json("tasks.json", {})
     task = target["_task"]
     task["status"] = "进行中"
     task["draft"] = False
     tasks[target["taskId"]] = task
     save_json("tasks.json", tasks)
+    _write_achievements(remaining)
 
 
 # --- Snapshot / focus ranking ---
@@ -145,31 +154,44 @@ _PRIORITY_RANK = {"高": 0, "中": 1, "低": 2}
 
 
 def _focus_key(t):
-    return (_PRIORITY_RANK.get(t.get("priority"), 1), t.get("due") or "9999-99-99")
+    blocked = 1 if t.get("blocked") else 0
+    return (blocked, _PRIORITY_RANK.get(t.get("priority"), 1), t.get("due") or "9999-99-99")
 
 
 def build_snapshot():
     projects = load_json("projects.json", {})
     tasks = load_json("tasks.json", {})
     enriched = [dict(id=tid, **t) for tid, t in tasks.items()]
-    ordered = sorted(enriched, key=_focus_key)
-    focus = [{**t, "flagged": bool(t.get("blocked"))} for t in ordered[:5]]
+
+    # Item 1: exclude drafts from focus; Item 2: blocked sorts after non-blocked
+    focus_candidates = [t for t in enriched if not t.get("draft")]
+    ordered = sorted(focus_candidates, key=_focus_key)
+    # Item 3: no 'flagged' key — dashboard reads t.blocked directly
+    focus = [dict(t) for t in ordered[:5]]
+
     grouped = []
     known_pids = set()
     for pid, p in projects.items():
+        # Item 5: always add pid to known_pids (archived or not), so their
+        # tasks don't leak into "未分组"
+        known_pids.add(pid)
         if p.get("archived"):
             continue
         pts = [t for t in enriched if t["project"] == pid]
-        known_pids.add(pid)
         grouped.append({"id": pid, "name": p["name"], "tasks": pts})
+
+    # Only tasks with a truly unknown project id go to "未分组"
     orphans = [t for t in enriched if t["project"] not in known_pids]
     if orphans:
         grouped.append({"id": None, "name": "未分组", "tasks": orphans})
+
+    # Item 7: defensive reads — malformed achievement lines use .get() with defaults
     ach = read_achievements()
-    done_today = [a for a in ach if a["date"] == _today()]
+    today = _today()
+    done_today = [a for a in ach if a.get("date", "") == today]
     counts = {
-        "achievementsReady": sum(1 for a in ach if a["cvStatus"] == "ready"),
-        "achievementsPending": sum(1 for a in ach if a["cvStatus"] == "pending"),
+        "achievementsReady": sum(1 for a in ach if a.get("cvStatus") == "ready"),
+        "achievementsPending": sum(1 for a in ach if a.get("cvStatus") == "pending"),
     }
     return {"focus": focus, "projects": grouped, "doneToday": done_today, "counts": counts}
 
@@ -194,6 +216,8 @@ def _cli():
                                   a.get("due", ""), a.get("nextAction", ""), a.get("blocked", False))}
         elif cmd == "update-task":
             update_task(a.pop("id"), **a); out = {"ok": True}
+        elif cmd == "update-project":
+            update_project(a.pop("id"), **a); out = {"ok": True}
         elif cmd == "confirm-drafts":
             confirm_drafts(); out = {"ok": True}
         elif cmd == "complete-task":

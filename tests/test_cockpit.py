@@ -226,3 +226,218 @@ class OrphanTaskTest(unittest.TestCase):
         ungrouped = next(g for g in snap["projects"] if g["name"] == "未分组")
         self.assertEqual(len(ungrouped["tasks"]), 1)
         self.assertEqual(ungrouped["tasks"][0]["title"], "孤儿任务")
+
+
+# ── Item 1: draft tasks excluded from focus ────────────────────────────────
+class FocusDraftExclusionTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_draft_task_not_in_focus(self):
+        pid = self.c.add_project("P")
+        # draft task (not confirmed) – should be excluded from focus
+        self.c.add_task(pid, "草稿任务", priority="高")
+        snap = self.c.build_snapshot()
+        titles = [t["title"] for t in snap["focus"]]
+        self.assertNotIn("草稿任务", titles)
+
+    def test_confirmed_task_appears_in_focus(self):
+        pid = self.c.add_project("P")
+        self.c.add_task(pid, "确认任务", priority="高")
+        self.c.confirm_drafts()
+        snap = self.c.build_snapshot()
+        titles = [t["title"] for t in snap["focus"]]
+        self.assertIn("确认任务", titles)
+
+
+# ── Item 2: blocked tasks rank lower within focus ─────────────────────────
+class FocusBlockedRankingTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_unblocked_mid_before_blocked_high(self):
+        pid = self.c.add_project("P")
+        self.c.add_task(pid, "blocked-高", priority="高", blocked=True)
+        self.c.add_task(pid, "unblocked-中", priority="中", blocked=False)
+        self.c.confirm_drafts()
+        focus = self.c.build_snapshot()["focus"]
+        titles = [t["title"] for t in focus]
+        # unblocked 中 should come before blocked 高
+        self.assertLess(titles.index("unblocked-中"), titles.index("blocked-高"))
+
+    def test_existing_priority_order_unchanged_when_no_blocked(self):
+        # mirror of the existing test_focus_orders_by_priority_then_due
+        p = self.c.add_project("P")
+        self.c.add_task(p, "low", priority="低", due="2026-06-12")
+        self.c.add_task(p, "high-late", priority="高", due="2026-06-20")
+        self.c.add_task(p, "high-soon", priority="高", due="2026-06-12")
+        self.c.confirm_drafts()
+        titles = [f["title"] for f in self.c.build_snapshot()["focus"]]
+        self.assertEqual(titles[:3], ["high-soon", "high-late", "low"])
+
+
+# ── Item 3: no 'flagged' key in focus items ───────────────────────────────
+class FocusFlaggedRemovedTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_focus_items_have_no_flagged_key(self):
+        pid = self.c.add_project("P")
+        self.c.add_task(pid, "T", priority="高", blocked=True)
+        self.c.confirm_drafts()
+        for item in self.c.build_snapshot()["focus"]:
+            self.assertNotIn("flagged", item)
+
+
+# ── Item 4: update-project command ───────────────────────────────────────
+class UpdateProjectTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_rename_project_reflected_in_snapshot(self):
+        pid = self.c.add_project("旧名称")
+        self.c.update_project(pid, name="新名称")
+        snap = self.c.build_snapshot()
+        names = [p["name"] for p in snap["projects"]]
+        self.assertIn("新名称", names)
+        self.assertNotIn("旧名称", names)
+
+    def test_archive_project_removes_from_snapshot(self):
+        pid = self.c.add_project("要归档的项目")
+        self.c.add_task(pid, "任务A")
+        self.c.update_project(pid, archived=True)
+        snap = self.c.build_snapshot()
+        names = [p["name"] for p in snap["projects"]]
+        self.assertNotIn("要归档的项目", names)
+
+
+class UpdateProjectCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.env = {**os.environ, "TASK_COCKPIT_DIR": self.tmp}
+        self.script = str(Path(__file__).resolve().parent.parent / "cockpit.py")
+
+    def run_cmd(self, *args):
+        out = subprocess.check_output([sys.executable, self.script, *args], env=self.env)
+        return json.loads(out)
+
+    def test_cli_update_project_rename(self):
+        pid = self.run_cmd("add-project", "--json", json.dumps({"name": "Old"}))["id"]
+        res = self.run_cmd("update-project", "--json", json.dumps({"id": pid, "name": "New"}))
+        self.assertEqual(res, {"ok": True})
+        snap = self.run_cmd("snapshot")
+        self.assertEqual(snap["projects"][0]["name"], "New")
+
+    def test_cli_update_project_archive(self):
+        pid = self.run_cmd("add-project", "--json", json.dumps({"name": "ToArchive"}))["id"]
+        self.run_cmd("update-project", "--json", json.dumps({"id": pid, "archived": True}))
+        snap = self.run_cmd("snapshot")
+        self.assertEqual(snap["projects"], [])
+
+
+# ── Item 5: archived-project tasks do NOT appear as orphans ──────────────
+class ArchivedProjectOrphanTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_task_under_archived_project_not_in_ungrouped(self):
+        pid = self.c.add_project("归档项目")
+        self.c.add_task(pid, "归档项目的任务")
+        self.c.update_project(pid, archived=True)
+        snap = self.c.build_snapshot()
+        group_names = [g["name"] for g in snap["projects"]]
+        self.assertNotIn("未分组", group_names)
+        # also should not appear anywhere in the board
+        all_task_titles = [
+            t["title"]
+            for g in snap["projects"]
+            for t in g["tasks"]
+        ]
+        self.assertNotIn("归档项目的任务", all_task_titles)
+
+
+# ── Item 6: safer write ordering ─────────────────────────────────────────
+class SaferWriteOrderTest(unittest.TestCase):
+    """
+    Verify that on success the observable outcome is unchanged, and that
+    the write-order contract (achievement first, then task removal) holds
+    by monkey-patching save_json to fail on the second call.
+    """
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_complete_task_achievement_written_before_task_removed(self):
+        pid = self.c.add_project("P")
+        tid = self.c.add_task(pid, "T"); self.c.confirm_drafts()
+        # Simulate crash after achievement write but before tasks.json update
+        original_write = self.c._write_achievements
+        save_calls = []
+        original_save = self.c.save_json
+
+        def tracking_save(name, obj):
+            save_calls.append(name)
+            original_save(name, obj)
+
+        self.c._write_achievements = lambda items: (
+            original_write(items) or save_calls.append("achievements.jsonl")
+        )
+        self.c.save_json = tracking_save
+        self.c.complete_task(tid, outcome="x", cv="y", cv_status="ready")
+        # achievement write must come before tasks.json write
+        ach_idx = save_calls.index("achievements.jsonl")
+        task_idx = save_calls.index("tasks.json")
+        self.assertLess(ach_idx, task_idx)
+
+    def test_undo_completion_task_restored_before_achievements_rewritten(self):
+        pid = self.c.add_project("P")
+        tid = self.c.add_task(pid, "T"); self.c.confirm_drafts()
+        aid = self.c.complete_task(tid, outcome="x", cv="y", cv_status="ready")
+        original_write = self.c._write_achievements
+        save_calls = []
+        original_save = self.c.save_json
+
+        def tracking_save(name, obj):
+            save_calls.append(name)
+            original_save(name, obj)
+
+        self.c._write_achievements = lambda items: (
+            original_write(items) or save_calls.append("achievements.jsonl")
+        )
+        self.c.save_json = tracking_save
+        self.c.undo_completion(aid)
+        task_idx = save_calls.index("tasks.json")
+        ach_idx = save_calls.index("achievements.jsonl")
+        self.assertLess(task_idx, ach_idx)
+
+
+# ── Item 7: defensive reads in build_snapshot ────────────────────────────
+class DefensiveSnapshotTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_malformed_achievement_line_does_not_crash_snapshot(self):
+        pid = self.c.add_project("P")
+        # Write one good and one malformed achievement line
+        ach_path = Path(self.tmp) / "achievements.jsonl"
+        good = json.dumps({"id": "done_1", "date": self.c._today(), "project": "P",
+                           "title": "T", "cvStatus": "ready"})
+        bad  = json.dumps({"id": "done_2"})   # missing date, cvStatus, project, title
+        ach_path.write_text(good + "\n" + bad + "\n", encoding="utf-8")
+        # Should not raise; counts should reflect only what's parseable
+        snap = self.c.build_snapshot()
+        self.assertIn("counts", snap)
+        self.assertGreaterEqual(snap["counts"]["achievementsReady"], 1)

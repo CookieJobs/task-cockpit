@@ -48,6 +48,7 @@ curl -s http://127.0.0.1:7842/api/health >/dev/null 2>&1 || \
 | 命令 | `--json` 必填参数 | 可选参数 | 返回 |
 |---|---|---|---|
 | `add-project` | `name` | — | `{id}` |
+| `update-project` | `id`（proj id）| `name`, `archived`（bool） | `{ok:true}` |
 | `add-task` | `project`（proj id）, `title` | `priority`（高/中/低，默认中）, `due`（YYYY-MM-DD）, `nextAction`（字符串）, `blocked`（bool，默认 false） | `{id}` |
 | `update-task` | `id`（task id），其余同 add-task 字段 | 任意任务字段 | `{ok:true}` |
 | `confirm-drafts` | — | — | `{ok:true}` |
