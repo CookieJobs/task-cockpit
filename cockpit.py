@@ -1,4 +1,4 @@
-import json, os, time
+import json, os, time, uuid
 from pathlib import Path
 
 
@@ -14,22 +14,23 @@ def load_json(name, default):
     p = data_dir() / name
     if not p.exists():
         return default
-    return json.loads(p.read_text(encoding="utf-8") or "null") or default
+    text = p.read_text(encoding="utf-8").strip()
+    if not text:
+        return default
+    return json.loads(text)
 
 
 def save_json(name, obj):
     p = data_dir() / name
-    p.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, p)
 
 
 # --- ID generation ---
 
-_id_counter = 0
-
 def _new_id(prefix):
-    global _id_counter
-    _id_counter += 1
-    return f"{prefix}_{int(time.time()*1000)%10_000_000:07d}{_id_counter:03d}"
+    return f"{prefix}_{int(time.time()*1000):013d}{uuid.uuid4().hex[:6]}"
 
 
 def _today():
@@ -90,7 +91,9 @@ def read_achievements():
 
 def _write_achievements(items):
     p = data_dir() / "achievements.jsonl"
-    p.write_text("".join(json.dumps(i, ensure_ascii=False) + "\n" for i in items), encoding="utf-8")
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text("".join(json.dumps(i, ensure_ascii=False) + "\n" for i in items), encoding="utf-8")
+    os.replace(tmp, p)
 
 
 def complete_task(tid, outcome="", reflection="", cv="", cv_status="ready"):
@@ -152,11 +155,16 @@ def build_snapshot():
     ordered = sorted(enriched, key=_focus_key)
     focus = [{**t, "flagged": bool(t.get("blocked"))} for t in ordered[:5]]
     grouped = []
+    known_pids = set()
     for pid, p in projects.items():
         if p.get("archived"):
             continue
         pts = [t for t in enriched if t["project"] == pid]
+        known_pids.add(pid)
         grouped.append({"id": pid, "name": p["name"], "tasks": pts})
+    orphans = [t for t in enriched if t["project"] not in known_pids]
+    if orphans:
+        grouped.append({"id": None, "name": "未分组", "tasks": orphans})
     ach = read_achievements()
     done_today = [a for a in ach if a["date"] == _today()]
     counts = {
@@ -168,7 +176,7 @@ def build_snapshot():
 
 # --- CLI ---
 
-import argparse, sys
+import argparse
 
 
 def _cli():
@@ -176,37 +184,41 @@ def _cli():
     parser.add_argument("command")
     parser.add_argument("--json", default="{}")
     args = parser.parse_args()
-    a = json.loads(args.json)
-    cmd = args.command
-    if cmd == "add-project":
-        out = {"id": add_project(a["name"])}
-    elif cmd == "add-task":
-        out = {"id": add_task(a["project"], a["title"], a.get("priority", "中"),
-                              a.get("due", ""), a.get("nextAction", ""), a.get("blocked", False))}
-    elif cmd == "update-task":
-        update_task(a.pop("id"), **a); out = {"ok": True}
-    elif cmd == "confirm-drafts":
-        confirm_drafts(); out = {"ok": True}
-    elif cmd == "complete-task":
-        out = {"id": complete_task(a["id"], a.get("outcome", ""), a.get("reflection", ""),
-                                   a.get("cv", ""), a.get("cv_status", "ready"))}
-    elif cmd == "update-cv":
-        update_achievement_cv(a["id"], a.get("cv"), a.get("cv_status")); out = {"ok": True}
-    elif cmd == "undo":
-        undo_completion(a["id"]); out = {"ok": True}
-    elif cmd == "delete-task":
-        delete_task(a["id"]); out = {"ok": True}
-    elif cmd == "snapshot":
-        out = build_snapshot()
-    elif cmd == "achievements":
-        items = read_achievements()
-        if a.get("project"):
-            items = [i for i in items if i["project"] == a["project"]]
-        if a.get("since"):
-            items = [i for i in items if i["date"] >= a["since"]]
-        out = {"items": items}
-    else:
-        out = {"error": f"unknown command {cmd}"}
+    try:
+        a = json.loads(args.json)
+        cmd = args.command
+        if cmd == "add-project":
+            out = {"id": add_project(a["name"])}
+        elif cmd == "add-task":
+            out = {"id": add_task(a["project"], a["title"], a.get("priority", "中"),
+                                  a.get("due", ""), a.get("nextAction", ""), a.get("blocked", False))}
+        elif cmd == "update-task":
+            update_task(a.pop("id"), **a); out = {"ok": True}
+        elif cmd == "confirm-drafts":
+            confirm_drafts(); out = {"ok": True}
+        elif cmd == "complete-task":
+            out = {"id": complete_task(a["id"], a.get("outcome", ""), a.get("reflection", ""),
+                                       a.get("cv", ""), a.get("cv_status", "ready"))}
+        elif cmd == "update-cv":
+            update_achievement_cv(a["id"], a.get("cv"), a.get("cv_status")); out = {"ok": True}
+        elif cmd == "undo":
+            undo_completion(a["id"]); out = {"ok": True}
+        elif cmd == "delete-task":
+            delete_task(a["id"]); out = {"ok": True}
+        elif cmd == "snapshot":
+            out = build_snapshot()
+        elif cmd == "achievements":
+            items = read_achievements()
+            if a.get("project"):
+                items = [i for i in items if i["project"] == a["project"]]
+            if a.get("since"):
+                items = [i for i in items if i["date"] >= a["since"]]
+            out = {"items": items}
+        else:
+            out = {"error": f"unknown command {cmd}"}
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+        raise SystemExit(1)
     print(json.dumps(out, ensure_ascii=False))
 
 

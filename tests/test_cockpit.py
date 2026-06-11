@@ -127,6 +127,40 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(self.c.build_snapshot()["counts"]["achievementsPending"], 1)
 
 
+class IdGenerationTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_ids_have_correct_prefix(self):
+        self.assertTrue(self.c._new_id("proj").startswith("proj_"))
+        self.assertTrue(self.c._new_id("task").startswith("task_"))
+        self.assertTrue(self.c._new_id("done").startswith("done_"))
+
+    def test_bulk_ids_are_unique(self):
+        ids = [self.c._new_id("t") for _ in range(1000)]
+        self.assertEqual(len(ids), len(set(ids)))
+
+
+class LoadJsonTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_empty_dict_not_replaced_by_default(self):
+        self.c.save_json("x.json", {})
+        self.assertEqual(self.c.load_json("x.json", {"fallback": True}), {})
+
+    def test_empty_list_not_replaced_by_default(self):
+        self.c.save_json("x.json", [])
+        self.assertEqual(self.c.load_json("x.json", ["fallback"]), [])
+
+    def test_missing_file_returns_default(self):
+        self.assertEqual(self.c.load_json("missing.json", {"d": 1}), {"d": 1})
+
+
 import subprocess, sys
 
 
@@ -153,3 +187,42 @@ class CliTest(unittest.TestCase):
         snap = self.run_cmd("snapshot")
         self.assertEqual(snap["focus"][0]["title"], "T")
         self.assertFalse(snap["focus"][0]["draft"])
+
+    def test_cli_error_returns_json_not_traceback(self):
+        result = subprocess.run(
+            [sys.executable, self.script, "complete-task",
+             "--json", json.dumps({"id": "task_nonexistent"})],
+            env=self.env, capture_output=True
+        )
+        stdout = result.stdout.decode()
+        parsed = json.loads(stdout)
+        self.assertIn("error", parsed)
+        self.assertNotEqual(result.returncode, 0)
+
+
+class OrphanTaskTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ["TASK_COCKPIT_DIR"] = self.tmp
+        import cockpit; importlib.reload(cockpit); self.c = cockpit
+
+    def test_orphan_task_appears_under_ungrouped(self):
+        # Add a task with a bogus project id that doesn't exist in projects.json
+        tasks = {"task_bogus0001": {
+            "project": "proj_doesnotexist",
+            "title": "孤儿任务",
+            "status": "未开始",
+            "priority": "中",
+            "due": "",
+            "nextAction": "",
+            "blocked": False,
+            "draft": False,
+            "createdAt": "2026-01-01"
+        }}
+        self.c.save_json("tasks.json", tasks)
+        snap = self.c.build_snapshot()
+        group_names = [g["name"] for g in snap["projects"]]
+        self.assertIn("未分组", group_names)
+        ungrouped = next(g for g in snap["projects"] if g["name"] == "未分组")
+        self.assertEqual(len(ungrouped["tasks"]), 1)
+        self.assertEqual(ungrouped["tasks"][0]["title"], "孤儿任务")
