@@ -1,5 +1,6 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import socketserver
 from pathlib import Path
 
 import cockpit
@@ -34,9 +35,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, "application/json; charset=utf-8", body)
 
         elif path == "/api/data":
-            snapshot = cockpit.build_snapshot()
-            body = json.dumps(snapshot, ensure_ascii=False).encode("utf-8")
-            self._send(200, "application/json; charset=utf-8", body)
+            try:
+                snapshot = cockpit.build_snapshot()
+                body = json.dumps(snapshot, ensure_ascii=False).encode("utf-8")
+                self._send(200, "application/json; charset=utf-8", body)
+            except Exception as exc:
+                body = json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8")
+                self._send(500, "application/json; charset=utf-8", body)
 
         elif path == "/":
             if _DASHBOARD.exists():
@@ -51,13 +56,29 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, "text/plain", body)
 
 
-def make_server(port: int = 7842) -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
-    return server
+class _Server(ThreadingHTTPServer):
+    """ThreadingHTTPServer that skips the reverse-DNS fqdn lookup in server_bind.
+
+    The default implementation calls socket.getfqdn() which can block for
+    20-35 s on machines where reverse-DNS for 127.0.0.1 times out.
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
+
+
+def make_server(port: int = 7842) -> _Server:
+    return _Server(("127.0.0.1", port), _Handler)
 
 
 if __name__ == "__main__":
     port = 7842
     httpd = make_server(port)
     print(json.dumps({"url": f"http://127.0.0.1:{port}", "port": port}), flush=True)
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    finally:
+        httpd.server_close()

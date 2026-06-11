@@ -1,4 +1,4 @@
-import os, json, tempfile, unittest, threading, urllib.request, importlib
+import os, json, tempfile, unittest, threading, urllib.request, importlib, urllib.error
 from pathlib import Path
 
 class ServerTest(unittest.TestCase):
@@ -13,6 +13,7 @@ class ServerTest(unittest.TestCase):
 
     def tearDown(self):
         self.httpd.shutdown()
+        self.httpd.server_close()
 
     def _get(self, path):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}") as r:
@@ -32,3 +33,26 @@ class ServerTest(unittest.TestCase):
         status, body = self._get("/")
         self.assertEqual(status, 200)
         self.assertIn("<html", body.lower())
+
+    def test_unknown_path_returns_404(self):
+        try:
+            self._get("/does/not/exist")
+            self.fail("Expected HTTPError for 404")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 404)
+
+    def test_api_data_returns_500_on_error(self):
+        original = self.c.build_snapshot
+        def _boom():
+            raise RuntimeError("boom")
+        self.c.build_snapshot = _boom
+        try:
+            try:
+                self._get("/api/data")
+                self.fail("Expected HTTPError for 500")
+            except urllib.error.HTTPError as e:
+                self.assertEqual(e.code, 500)
+                body = json.loads(e.read().decode())
+                self.assertIn("error", body)
+        finally:
+            self.c.build_snapshot = original
