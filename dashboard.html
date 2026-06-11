@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Cockpit</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Top bar ── */
+  #topbar {
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  #topbar h1 {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  #counts {
+    color: #6b7280;
+    font-size: 13px;
+  }
+  #counts strong { color: #374151; }
+
+  /* ── Main content ── */
+  #main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+  }
+
+  /* ── Section titles ── */
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── Focus box ── */
+  #focus-section {
+    margin-bottom: 20px;
+  }
+  #focus-box {
+    border: 2px solid #ef4444;
+    border-radius: 10px;
+    background: #fff;
+    padding: 14px 16px;
+  }
+  #focus-box .focus-header {
+    font-size: 13px;
+    font-weight: 700;
+    color: #dc2626;
+    margin-bottom: 12px;
+  }
+
+  /* ── Focus cards ── */
+  .focus-card {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .focus-card:last-child { margin-bottom: 0; }
+  .focus-card.blocked-card { border-left: 3px solid #f97316; }
+  .task-title { font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+
+  /* ── Projects grid ── */
+  #cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .proj-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .proj-header {
+    font-size: 13px;
+    font-weight: 700;
+    color: #374151;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .proj-header .task-count {
+    font-size: 11px;
+    font-weight: 400;
+    background: #f3f4f6;
+    color: #6b7280;
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+  .task-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 7px 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .task-row:last-child { border-bottom: none; }
+  .task-row.draft-row {
+    border: 1.5px dashed #f59e0b;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    background: #fffbeb;
+  }
+  .task-row.draft-row:last-child { margin-bottom: 0; }
+  .status-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+    font-size: 13px;
+    color: #9ca3af;
+  }
+  .status-icon.in-progress { color: #3b82f6; }
+  .task-body { flex: 1; min-width: 0; }
+  .empty-proj { color: #9ca3af; font-size: 13px; padding: 6px 0; }
+
+  /* ── Done today ── */
+  #done-section {
+    margin-bottom: 20px;
+  }
+  #done-section details {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  #done-section summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    color: #374151;
+    user-select: none;
+    list-style: none;
+  }
+  #done-section summary::-webkit-details-marker { display: none; }
+  #done-section summary::before { content: "▶ "; font-size: 10px; color: #9ca3af; }
+  #done-section details[open] summary::before { content: "▼ "; }
+  .done-list { margin-top: 10px; }
+  .done-item {
+    padding: 7px 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .done-item:last-child { border-bottom: none; }
+  .done-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+  .done-meta { font-size: 12px; color: #6b7280; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 1px 6px;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+  .badge-draft { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
+  .badge-cv    { background: #fee2e2; color: #b91c1c; }
+  .badge-blocked { color: #ea580c; font-size: 12px; }
+
+  /* ── Meta line ── */
+  .meta {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 2px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+  }
+  .meta-sep { color: #d1d5db; }
+  .pri-high { color: #ef4444; font-weight: 600; }
+  .pri-mid  { color: #f59e0b; font-weight: 600; }
+  .pri-low  { color: #9ca3af; }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    color: #9ca3af;
+    font-size: 12px;
+    padding: 16px 0;
+    border-top: 1px solid #e5e7eb;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>Task Cockpit</h1>
+  <div id="counts">—</div>
+</div>
+
+<div id="main">
+  <div id="focus-section"></div>
+  <div id="cols"></div>
+  <div id="done-section"></div>
+  <footer>○ 未开始　◐ 进行中　|　每 2 秒自动刷新</footer>
+</div>
+
+<script>
+'use strict';
+
+// ── HTML escape ──────────────────────────────────────────────────────────────
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ── Priority badge HTML ──────────────────────────────────────────────────────
+function priBadge(p) {
+  if (p === '高') return '<span class="pri-high">🔴高</span>';
+  if (p === '中') return '<span class="pri-mid">🟡中</span>';
+  return '<span class="pri-low">⚪低</span>';
+}
+
+// ── Meta line for a task ─────────────────────────────────────────────────────
+function pmeta(task) {
+  const parts = [];
+  if (task.priority) parts.push(priBadge(task.priority));
+  if (task.due)        parts.push('⏰' + esc(task.due));
+  if (task.nextAction) parts.push('▶ ' + esc(task.nextAction));
+  if (task.blocked)    parts.push('<span class="badge-blocked">⏳等待中</span>');
+  if (parts.length === 0) return '';
+  return '<div class="meta">' + parts.join('<span class="meta-sep"> · </span>') + '</div>';
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function render(data) {
+  // Counts bar
+  const r = data.counts.achievementsReady;
+  const p = data.counts.achievementsPending;
+  document.getElementById('counts').innerHTML =
+    '累计已沉淀 <strong>' + r + '</strong> 条成就 · <strong>' + p + '</strong> 条待补充';
+
+  // Focus section
+  const focusEl = document.getElementById('focus-section');
+  if (!data.focus || data.focus.length === 0) {
+    focusEl.innerHTML = '';
+  } else {
+    let cards = '';
+    for (const t of data.focus) {
+      const extra = t.blocked ? ' blocked-card' : '';
+      cards +=
+        '<div class="focus-card' + extra + '">' +
+          '<div class="task-title">' + esc(t.title) + '</div>' +
+          pmeta(t) +
+        '</div>';
+    }
+    focusEl.innerHTML =
+      '<div id="focus-box">' +
+        '<div class="focus-header">🔥 今日聚焦 · agent 按优先级+截止日算出</div>' +
+        cards +
+      '</div>';
+  }
+
+  // Projects
+  const colsEl = document.getElementById('cols');
+  if (!data.projects || data.projects.length === 0) {
+    colsEl.innerHTML = '';
+  } else {
+    let html = '';
+    for (const proj of data.projects) {
+      const taskCount = proj.tasks ? proj.tasks.length : 0;
+      let rows = '';
+      if (taskCount === 0) {
+        rows = '<div class="empty-proj">暂无任务</div>';
+      } else {
+        for (const t of proj.tasks) {
+          const isDraft = !!t.draft;
+          const inProg  = t.status === '进行中';
+          const iconCls = inProg ? ' in-progress' : '';
+          const icon    = inProg ? '◐' : '○';
+          const rowCls  = isDraft ? ' draft-row' : '';
+          const draftBadge = isDraft
+            ? '<span class="badge badge-draft">草稿待确认</span>'
+            : '';
+          rows +=
+            '<div class="task-row' + rowCls + '">' +
+              '<span class="status-icon' + iconCls + '">' + icon + '</span>' +
+              '<div class="task-body">' +
+                '<div class="task-title">' + esc(t.title) + draftBadge + '</div>' +
+                pmeta(t) +
+              '</div>' +
+            '</div>';
+        }
+      }
+      html +=
+        '<div class="proj-card">' +
+          '<div class="proj-header">' +
+            '<span>📁 ' + esc(proj.name) + '</span>' +
+            '<span class="task-count">' + taskCount + ' 项</span>' +
+          '</div>' +
+          rows +
+        '</div>';
+    }
+    colsEl.innerHTML = html;
+  }
+
+  // Done today
+  const doneEl = document.getElementById('done-section');
+  if (!data.doneToday || data.doneToday.length === 0) {
+    doneEl.innerHTML = '';
+  } else {
+    let items = '';
+    for (const d of data.doneToday) {
+      const text = d.cv || d.outcome || '';
+      const cvBadge = d.cvStatus === 'pending'
+        ? '<span class="badge badge-cv">CV待补充</span>'
+        : '';
+      items +=
+        '<div class="done-item">' +
+          '<div class="done-title">' + esc(d.title) + cvBadge + '</div>' +
+          '<div class="done-meta">' + esc(text) + '</div>' +
+        '</div>';
+    }
+    doneEl.innerHTML =
+      '<details>' +
+        '<summary>✅ 今天已完成（' + data.doneToday.length + '）</summary>' +
+        '<div class="done-list">' + items + '</div>' +
+      '</details>';
+  }
+}
+
+// ── Polling ──────────────────────────────────────────────────────────────────
+async function tick() {
+  try {
+    const res = await fetch('/api/data?t=' + Date.now());
+    if (!res.ok) return; // keep last render
+    const data = await res.json();
+    render(data);
+  } catch (_) {
+    // network error or server restart — keep last render, retry next tick
+  }
+}
+
+tick();
+setInterval(tick, 2000);
+</script>
+</body>
+</html>
