@@ -77,3 +77,60 @@ def delete_task(tid):
     tasks = load_json("tasks.json", {})
     tasks.pop(tid, None)
     save_json("tasks.json", tasks)
+
+
+# --- Achievements ---
+
+def read_achievements():
+    p = data_dir() / "achievements.jsonl"
+    if not p.exists():
+        return []
+    return [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _write_achievements(items):
+    p = data_dir() / "achievements.jsonl"
+    p.write_text("".join(json.dumps(i, ensure_ascii=False) + "\n" for i in items), encoding="utf-8")
+
+
+def complete_task(tid, outcome="", reflection="", cv="", cv_status="ready"):
+    tasks = load_json("tasks.json", {})
+    task = tasks.pop(tid)
+    save_json("tasks.json", tasks)
+    projects = load_json("projects.json", {})
+    pname = projects.get(task["project"], {}).get("name", task["project"])
+    aid = _new_id("done")
+    items = read_achievements()
+    items.append({
+        "id": aid, "date": _today(), "taskId": tid,
+        "projectId": task["project"], "project": pname,
+        "title": task["title"], "outcome": outcome,
+        "reflection": reflection, "cv": cv, "cvStatus": cv_status,
+        "_task": task
+    })
+    _write_achievements(items)
+    return aid
+
+
+def update_achievement_cv(aid, cv=None, cv_status=None):
+    items = read_achievements()
+    for it in items:
+        if it["id"] == aid:
+            if cv is not None:
+                it["cv"] = cv
+            if cv_status is not None:
+                it["cvStatus"] = cv_status
+    _write_achievements(items)
+
+
+def undo_completion(aid):
+    items = read_achievements()
+    target = next(it for it in items if it["id"] == aid)
+    items = [it for it in items if it["id"] != aid]
+    _write_achievements(items)
+    tasks = load_json("tasks.json", {})
+    task = target["_task"]
+    task["status"] = "进行中"
+    task["draft"] = False
+    tasks[target["taskId"]] = task
+    save_json("tasks.json", tasks)
