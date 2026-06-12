@@ -338,6 +338,10 @@ function render(data) {
   if (!data.doneToday || data.doneToday.length === 0) {
     doneEl.innerHTML = '';
   } else {
+    // Preserve the user's expand/collapse state across the 2s auto-refresh:
+    // read whether the <details> is currently open before we rebuild it.
+    const prev = doneEl.querySelector('details');
+    const wasOpen = prev ? prev.open : false;
     let items = '';
     for (const d of data.doneToday) {
       const text = d.cv || d.outcome || '';
@@ -351,7 +355,7 @@ function render(data) {
         '</div>';
     }
     doneEl.innerHTML =
-      '<details>' +
+      '<details' + (wasOpen ? ' open' : '') + '>' +
         '<summary>✅ 今天已完成（' + data.doneToday.length + '）</summary>' +
         '<div class="done-list">' + items + '</div>' +
       '</details>';
@@ -359,12 +363,15 @@ function render(data) {
 }
 
 // ── Polling ──────────────────────────────────────────────────────────────────
+let lastJson = null;
 async function tick() {
   try {
     const res = await fetch('/api/data?t=' + Date.now());
     if (!res.ok) return; // keep last render
-    const data = await res.json();
-    render(data);
+    const text = await res.text();
+    if (text === lastJson) return; // nothing changed — don't rebuild the DOM
+    lastJson = text;
+    render(JSON.parse(text));
   } catch (_) {
     // network error or server restart — keep last render, retry next tick
   }
