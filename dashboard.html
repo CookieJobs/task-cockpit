@@ -204,6 +204,14 @@
   .pri-mid  { color: #f59e0b; font-weight: 600; }
   .pri-low  { color: #9ca3af; }
 
+  /* ── Time dimension ── */
+  #topbar-date { font-size: 12px; color: #9ca3af; }
+  .due-overdue { color: #dc2626; font-weight: 600; }
+  .due-today   { color: #ea580c; font-weight: 600; }
+  .due-soon    { color: #d97706; font-weight: 600; }
+  .due-normal  { color: #6b7280; }
+  .task-age    { color: #d1d5db; font-size: 11px; }
+
   /* ── Footer ── */
   footer {
     text-align: center;
@@ -219,7 +227,10 @@
 
 <div id="topbar">
   <h1>Task Cockpit</h1>
-  <div id="counts">—</div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div id="topbar-date">—</div>
+    <div id="counts">—</div>
+  </div>
 </div>
 
 <div id="main">
@@ -250,19 +261,58 @@ function priBadge(p) {
   return '<span class="pri-low">⚪低</span>';
 }
 
+// ── Time utilities ───────────────────────────────────────────────────────────
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+function daysDiff(dateStr) {
+  const a = new Date(todayStr());
+  const b = new Date(dateStr);
+  return Math.round((b - a) / 86400000);
+}
+
+function relDue(due) {
+  if (!due) return '';
+  const d = daysDiff(due);
+  if (d < 0)  return '<span class="due-overdue">⚠️ 逾期' + Math.abs(d) + '天</span>';
+  if (d === 0) return '<span class="due-today">🔥 今天截止</span>';
+  if (d === 1) return '<span class="due-soon">⏰ 明天截止</span>';
+  if (d <= 3)  return '<span class="due-soon">⏰ 还有' + d + '天</span>';
+  return '<span class="due-normal">⏰ ' + due.slice(5) + '</span>';
+}
+
+function taskAge(createdAt) {
+  if (!createdAt) return '';
+  const d = -daysDiff(createdAt);
+  if (d <= 2) return '';
+  return '<span class="task-age">挂了' + d + '天</span>';
+}
+
 // ── Meta line for a task ─────────────────────────────────────────────────────
 function pmeta(task) {
   const parts = [];
   if (task.priority) parts.push(priBadge(task.priority));
-  if (task.due)        parts.push('⏰' + esc(task.due));
+  if (task.due)        parts.push(relDue(task.due));
   if (task.nextAction) parts.push('▶ ' + esc(task.nextAction));
   if (task.blocked)    parts.push('<span class="badge-blocked">⏳等待中</span>');
+  const age = taskAge(task.createdAt);
+  if (age) parts.push(age);
   if (parts.length === 0) return '';
   return '<div class="meta">' + parts.join('<span class="meta-sep"> · </span>') + '</div>';
 }
 
 // ── Render ───────────────────────────────────────────────────────────────────
 function render(data) {
+  // Topbar date
+  const days = ['日','一','二','三','四','五','六'];
+  const now = new Date();
+  document.getElementById('topbar-date').textContent =
+    (now.getMonth()+1) + '月' + now.getDate() + '日 周' + days[now.getDay()];
+
   // Counts bar
   const c = data.counts || {};
   const r = c.achievementsReady ?? 0;
@@ -359,7 +409,7 @@ function render(data) {
         : '';
       items +=
         '<div class="done-item">' +
-          '<div class="done-title">' + esc(d.title) + cvBadge + '</div>' +
+          '<div class="done-title">' + esc(d.title) + cvBadge + (d.date ? '<span class="task-age" style="margin-left:6px;">' + d.date.slice(5) + ' 完成</span>' : '') + '</div>' +
           '<div class="done-meta">' + esc(text) + '</div>' +
         '</div>';
     }
