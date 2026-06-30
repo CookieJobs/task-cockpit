@@ -283,6 +283,40 @@
   .btn-danger { background: #fee2e2; color: #dc2626; }
   .btn-danger:hover { background: #fecaca; }
 
+  /* ── Tabs ── */
+  #tabs {
+    display: flex; gap: 0; border-bottom: 2px solid #e5e7eb;
+    margin-bottom: 20px;
+  }
+  .tab-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; color: #6b7280;
+    padding: 8px 20px; border-bottom: 2px solid transparent; margin-bottom: -2px;
+    transition: all .15s;
+  }
+  .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .tab-btn:hover:not(.active) { color: #374151; }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* ── Achievements view ── */
+  .ach-proj-group { margin-bottom: 24px; }
+  .ach-proj-title {
+    font-size: 13px; font-weight: 700; color: #374151;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+  }
+  .ach-item {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 8px;
+  }
+  .ach-item-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .ach-title { font-weight: 600; font-size: 14px; flex: 1; }
+  .ach-date { font-size: 11px; color: #9ca3af; flex-shrink: 0; }
+  .ach-cv { font-size: 13px; color: #374151; line-height: 1.6; margin-top: 4px; }
+  .ach-reflection { font-size: 12px; color: #6b7280; margin-top: 6px; font-style: italic; }
+  .badge-pending { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; }
+  .ach-empty { color: #9ca3af; font-size: 13px; text-align: center; padding: 40px 0; }
+
   /* ── Footer ── */
   footer {
     text-align: center;
@@ -305,9 +339,18 @@
 </div>
 
 <div id="main">
-  <div id="focus-section"></div>
-  <div id="cols"></div>
-  <div id="done-section"></div>
+  <div id="tabs">
+    <button class="tab-btn active" onclick="switchTab('board')">看板</button>
+    <button class="tab-btn" onclick="switchTab('achievements')">成就库</button>
+  </div>
+  <div id="tab-board" class="tab-pane active">
+    <div id="focus-section"></div>
+    <div id="cols"></div>
+    <div id="done-section"></div>
+  </div>
+  <div id="tab-achievements" class="tab-pane">
+    <div id="ach-view"></div>
+  </div>
   <footer>○ 未开始　◐ 进行中　|　每 2 秒自动刷新</footer>
 </div>
 
@@ -719,6 +762,62 @@ document.getElementById('p-save').onclick = async () => {
     if (e.target.id === id) document.getElementById(id).classList.remove('open');
   });
 });
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+let _activeTab = 'board';
+
+function switchTab(tab) {
+  _activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['board','achievements'][i] === tab);
+  });
+  document.getElementById('tab-board').classList.toggle('active', tab === 'board');
+  document.getElementById('tab-achievements').classList.toggle('active', tab === 'achievements');
+  if (tab === 'achievements') loadAchievements();
+}
+
+async function loadAchievements() {
+  const res = await fetch('/api/achievements');
+  const data = await res.json();
+  const items = data.items || [];
+  const el = document.getElementById('ach-view');
+
+  if (items.length === 0) {
+    el.innerHTML = '<div class="ach-empty">还没有已完成的成就，完成任务后会自动沉淀到这里。</div>';
+    return;
+  }
+
+  // Group by project
+  const groups = {};
+  for (const a of [...items].reverse()) {
+    const key = a.project || '未分组';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(a);
+  }
+
+  let html = '';
+  for (const [proj, achList] of Object.entries(groups)) {
+    const rows = achList.map(a => {
+      const pending = a.cvStatus === 'pending'
+        ? '<span class="badge-pending">CV待补充</span>' : '';
+      const reflection = a.reflection
+        ? `<div class="ach-reflection">💭 ${esc(a.reflection)}</div>` : '';
+      return `<div class="ach-item">
+        <div class="ach-item-header">
+          <span class="ach-title">${esc(a.title)} ${pending}</span>
+          <span class="ach-date">${a.date || ''}</span>
+        </div>
+        <div class="ach-cv">${esc(a.cv || a.outcome || '')}</div>
+        ${reflection}
+      </div>`;
+    }).join('');
+    html += `<div class="ach-proj-group">
+      <div class="ach-proj-title">📁 ${esc(proj)} <span style="font-weight:400;color:#9ca3af;font-size:12px">${achList.length} 项</span></div>
+      ${rows}
+    </div>`;
+  }
+  el.innerHTML = html;
+}
 
 // ── Polling ──────────────────────────────────────────────────────────────────
 let lastJson = null;

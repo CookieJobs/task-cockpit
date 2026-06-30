@@ -106,6 +106,15 @@ class _Handler(BaseHTTPRequestHandler):
                 body = json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8")
                 self._send(500, "application/json; charset=utf-8", body)
 
+        elif path == "/api/achievements":
+            try:
+                items = cockpit.read_achievements()
+                body = json.dumps({"items": items}, ensure_ascii=False).encode("utf-8")
+                self._send(200, "application/json; charset=utf-8", body)
+            except Exception as exc:
+                body = json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8")
+                self._send(500, "application/json; charset=utf-8", body)
+
         elif path == "/":
             if _DASHBOARD.exists():
                 html = _DASHBOARD.read_text(encoding="utf-8")
