@@ -53,6 +53,16 @@ def update_project(pid, **fields):
     save_json("projects.json", projects)
 
 
+def delete_project(pid):
+    projects = load_json("projects.json", {})
+    projects.pop(pid, None)
+    save_json("projects.json", projects)
+    # Also delete all tasks belonging to this project
+    tasks = load_json("tasks.json", {})
+    tasks = {tid: t for tid, t in tasks.items() if t.get("project") != pid}
+    save_json("tasks.json", tasks)
+
+
 # --- Tasks ---
 
 def add_task(project, title, priority="中", due="", nextAction="", blocked=False, checklist=None):

@@ -101,6 +101,17 @@
     border-radius: 10px;
     padding: 14px 16px;
   }
+  .proj-card { position: relative; }
+  .proj-card:hover .proj-menu { display: flex; }
+  .proj-menu {
+    display: none; gap: 4px; align-items: center;
+  }
+  .proj-menu-btn {
+    background: none; border: none; cursor: pointer; font-size: 12px;
+    color: #9ca3af; padding: 2px 6px; border-radius: 4px;
+  }
+  .proj-menu-btn:hover { background: #f3f4f6; color: #374151; }
+  .proj-menu-btn.danger:hover { background: #fee2e2; color: #dc2626; }
   .proj-header {
     font-size: 13px;
     font-weight: 700;
@@ -527,7 +538,13 @@ function render(data) {
         '<div class="proj-card">' +
           '<div class="proj-header">' +
             '<span>' + projEmoji(proj.id) + ' ' + esc(proj.name) + '</span>' +
-            '<span class="task-count">' + taskCount + ' 项</span>' +
+            '<div style="display:flex;align-items:center;gap:6px">' +
+              '<span class="task-count">' + taskCount + ' 项</span>' +
+              '<div class="proj-menu">' +
+                '<button class="proj-menu-btn" title="归档项目" onclick="archiveProj(\'' + proj.id + '\',\'' + esc(proj.name) + '\')">归档</button>' +
+                '<button class="proj-menu-btn danger" title="删除项目" onclick="deleteProj(\'' + proj.id + '\',\'' + esc(proj.name) + '\')">删除</button>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
           rows +
           '<button class="proj-add-btn" onclick="openAddTask(\'' + proj.id + '\')">＋ 新增任务</button>' +
@@ -670,6 +687,16 @@ document.getElementById('m-save').onclick = async () => {
   }
   document.getElementById('task-modal').classList.remove('open');
 };
+
+async function archiveProj(pid, name) {
+  if (!confirm(`归档项目「${name}」？归档后不显示在看板，任务保留。`)) return;
+  await api('/api/project/update', {id: pid, archived: true});
+}
+
+async function deleteProj(pid, name) {
+  if (!confirm(`删除项目「${name}」？项目下所有任务也会一并删除，无法恢复。`)) return;
+  await api('/api/project/delete', {id: pid});
+}
 
 // ── Project modal ─────────────────────────────────────────────────────────────
 function openAddProject() {

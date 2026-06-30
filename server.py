@@ -52,6 +52,10 @@ class _Handler(BaseHTTPRequestHandler):
                 cockpit.update_project(a.pop("id"), **a)
                 self._ok()
 
+            elif path == "/api/project/delete":
+                cockpit.delete_project(a["id"])
+                self._ok()
+
             elif path == "/api/task/add":
                 tid = cockpit.add_task(
                     a["project"], a["title"],
