@@ -55,13 +55,14 @@ def update_project(pid, **fields):
 
 # --- Tasks ---
 
-def add_task(project, title, priority="中", due="", nextAction="", blocked=False):
+def add_task(project, title, priority="中", due="", nextAction="", blocked=False, checklist=None):
     tasks = load_json("tasks.json", {})
     tid = _new_id("task")
     tasks[tid] = {
         "project": project, "title": title, "status": "未开始",
         "priority": priority, "due": due, "nextAction": nextAction,
-        "blocked": blocked, "draft": True, "createdAt": _today()
+        "blocked": blocked, "draft": True, "createdAt": _today(),
+        "checklist": checklist or [],
     }
     save_json("tasks.json", tasks)
     return tid

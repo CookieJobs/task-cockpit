@@ -212,6 +212,66 @@
   .due-normal  { color: #6b7280; }
   .task-age    { color: #d1d5db; font-size: 11px; }
 
+  /* ── Interactive controls ── */
+  .proj-add-btn, .new-proj-btn {
+    background: none; border: 1px dashed #d1d5db; border-radius: 6px;
+    color: #9ca3af; font-size: 12px; cursor: pointer; padding: 4px 10px;
+    width: 100%; margin-top: 8px; transition: all .15s;
+  }
+  .proj-add-btn:hover, .new-proj-btn:hover { border-color: #6b7280; color: #374151; background: #f9fafb; }
+  .new-proj-btn { margin: 0 0 14px; }
+  .task-actions { display: none; gap: 4px; margin-left: auto; flex-shrink: 0; }
+  .task-row:hover .task-actions { display: flex; }
+  .task-action-btn {
+    background: none; border: none; cursor: pointer; font-size: 13px;
+    color: #9ca3af; padding: 1px 4px; border-radius: 3px;
+  }
+  .task-action-btn:hover { color: #374151; background: #f3f4f6; }
+  .status-icon { cursor: pointer; }
+  .status-icon:hover { opacity: .7; }
+
+  /* ── Checklist ── */
+  .checklist { margin-top: 5px; display: flex; flex-direction: column; gap: 3px; }
+  .cl-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; }
+  .cl-item input[type=checkbox] { cursor: pointer; accent-color: #3b82f6; flex-shrink: 0; }
+  .cl-item.done span { text-decoration: line-through; color: #9ca3af; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.35); z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #fff; border-radius: 12px; padding: 24px;
+    width: min(480px, 94vw); max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,.2);
+  }
+  .modal h2 { font-size: 15px; font-weight: 700; margin-bottom: 16px; color: #111827; }
+  .modal label { display: block; font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 4px; margin-top: 12px; }
+  .modal input[type=text], .modal input[type=date], .modal select, .modal textarea {
+    width: 100%; border: 1px solid #d1d5db; border-radius: 6px;
+    padding: 7px 10px; font-size: 13px; color: #111827;
+    font-family: inherit; outline: none;
+  }
+  .modal input:focus, .modal select:focus, .modal textarea:focus { border-color: #3b82f6; }
+  .modal textarea { resize: vertical; min-height: 60px; }
+  .cl-edit-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+  .cl-edit-row { display: flex; gap: 6px; align-items: center; }
+  .cl-edit-row input[type=text] { flex: 1; }
+  .cl-edit-row button { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 16px; padding: 0 4px; }
+  .cl-edit-row button:hover { color: #ef4444; }
+  .add-cl-item { background: none; border: 1px dashed #d1d5db; border-radius: 5px; color: #6b7280; font-size: 12px; cursor: pointer; padding: 4px 10px; }
+  .add-cl-item:hover { border-color: #6b7280; }
+  .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  .btn { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-ghost { background: #f3f4f6; color: #374151; }
+  .btn-ghost:hover { background: #e5e7eb; }
+  .btn-danger { background: #fee2e2; color: #dc2626; }
+  .btn-danger:hover { background: #fecaca; }
+
   /* ── Footer ── */
   footer {
     text-align: center;
@@ -240,6 +300,48 @@
   <footer>○ 未开始　◐ 进行中　|　每 2 秒自动刷新</footer>
 </div>
 
+<!-- Task edit / add modal -->
+<div class="modal-overlay" id="task-modal">
+  <div class="modal">
+    <h2 id="modal-title">编辑任务</h2>
+    <input type="hidden" id="m-task-id">
+    <input type="hidden" id="m-project-id">
+    <label>任务标题</label>
+    <input type="text" id="m-title" placeholder="任务标题">
+    <label>优先级</label>
+    <select id="m-priority">
+      <option value="高">🔴 高</option>
+      <option value="中" selected>🟡 中</option>
+      <option value="低">⚪ 低</option>
+    </select>
+    <label>截止日期</label>
+    <input type="date" id="m-due">
+    <label>下一步行动</label>
+    <textarea id="m-next" rows="2" placeholder="当前最重要的一件事…"></textarea>
+    <label>检查清单</label>
+    <div class="cl-edit-list" id="m-cl-list"></div>
+    <button class="add-cl-item" id="m-cl-add">＋ 添加清单项</button>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="m-delete" style="margin-right:auto;display:none">删除任务</button>
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- New project modal -->
+<div class="modal-overlay" id="proj-modal">
+  <div class="modal">
+    <h2>新建项目</h2>
+    <label>项目名称</label>
+    <input type="text" id="p-name" placeholder="项目名称">
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="p-cancel">取消</button>
+      <button class="btn btn-primary" id="p-save">创建</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -252,6 +354,42 @@ function esc(s) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ── API helpers ─────────────────────────────────────────────────────────────
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+// ── Checklist HTML ───────────────────────────────────────────────────────────
+function clHtml(tid, checklist) {
+  if (!checklist || checklist.length === 0) return '';
+  const items = checklist.map((c, i) => {
+    const done = !!c.done;
+    return `<label class="cl-item${done ? ' done' : ''}">
+      <input type="checkbox" ${done ? 'checked' : ''} onchange="toggleCl('${tid}',${i},this.checked)">
+      <span>${esc(c.text)}</span>
+    </label>`;
+  }).join('');
+  const total = checklist.length, doneN = checklist.filter(c=>c.done).length;
+  return `<div class="checklist">${items}</div>
+    <div class="meta" style="margin-top:4px"><span style="color:#6b7280;font-size:11px">${doneN}/${total} 完成</span></div>`;
+}
+
+async function toggleCl(tid, index, done) {
+  await api('/api/task/checklist', {id: tid, index, done});
+}
+
+// ── Status cycle ─────────────────────────────────────────────────────────────
+const STATUS_CYCLE = {'未开始':'进行中','进行中':'未开始'};
+async function cycleStatus(tid, current) {
+  const next = STATUS_CYCLE[current] || '进行中';
+  await api('/api/task/update', {id: tid, status: next});
 }
 
 // ── Priority badge HTML ──────────────────────────────────────────────────────
@@ -307,6 +445,7 @@ function pmeta(task) {
 
 // ── Render ───────────────────────────────────────────────────────────────────
 function render(data) {
+  _snapshot = data;
   // Topbar date
   const days = ['日','一','二','三','四','五','六'];
   const now = new Date();
@@ -372,10 +511,14 @@ function render(data) {
             : '';
           rows +=
             '<div class="task-row' + rowCls + '">' +
-              '<span class="status-icon' + iconCls + '">' + icon + '</span>' +
+              '<span class="status-icon' + iconCls + '" title="点击切换状态" onclick="cycleStatus(\'' + t.id + '\',\'' + t.status + '\')">' + icon + '</span>' +
               '<div class="task-body">' +
                 '<div class="task-title">' + esc(t.title) + draftBadge + '</div>' +
                 pmeta(t) +
+                clHtml(t.id, t.checklist) +
+              '</div>' +
+              '<div class="task-actions">' +
+                '<button class="task-action-btn" title="编辑" onclick="openEditTask(\'' + t.id + '\')">✏️</button>' +
               '</div>' +
             '</div>';
         }
@@ -387,9 +530,12 @@ function render(data) {
             '<span class="task-count">' + taskCount + ' 项</span>' +
           '</div>' +
           rows +
+          '<button class="proj-add-btn" onclick="openAddTask(\'' + proj.id + '\')">＋ 新增任务</button>' +
         '</div>';
     }
-    colsEl.innerHTML = html;
+    colsEl.innerHTML =
+      '<button class="new-proj-btn" onclick="openAddProject()">＋ 新建项目</button>' +
+      html;
   }
 
   // Done today
@@ -420,6 +566,132 @@ function render(data) {
       '</details>';
   }
 }
+
+// ── Task modal ───────────────────────────────────────────────────────────────
+let _snapshot = null;
+
+function openEditTask(tid) {
+  const t = _snapshot.projects.flatMap(p=>p.tasks).find(t=>t.id===tid)
+         || _snapshot.focus.find(t=>t.id===tid);
+  if (!t) return;
+  document.getElementById('modal-title').textContent = '编辑任务';
+  document.getElementById('m-task-id').value = tid;
+  document.getElementById('m-project-id').value = t.project;
+  document.getElementById('m-title').value = t.title;
+  document.getElementById('m-priority').value = t.priority || '中';
+  document.getElementById('m-due').value = t.due || '';
+  document.getElementById('m-next').value = t.nextAction || '';
+  document.getElementById('m-delete').style.display = 'inline-flex';
+  renderClEdit(t.checklist || []);
+  document.getElementById('task-modal').classList.add('open');
+  document.getElementById('m-title').focus();
+}
+
+function openAddTask(pid) {
+  document.getElementById('modal-title').textContent = '新增任务';
+  document.getElementById('m-task-id').value = '';
+  document.getElementById('m-project-id').value = pid;
+  document.getElementById('m-title').value = '';
+  document.getElementById('m-priority').value = '中';
+  document.getElementById('m-due').value = '';
+  document.getElementById('m-next').value = '';
+  document.getElementById('m-delete').style.display = 'none';
+  renderClEdit([]);
+  document.getElementById('task-modal').classList.add('open');
+  document.getElementById('m-title').focus();
+}
+
+function renderClEdit(items) {
+  const list = document.getElementById('m-cl-list');
+  list.innerHTML = items.map((c,i) =>
+    `<div class="cl-edit-row">
+      <input type="text" value="${esc(c.text)}" placeholder="清单项内容" data-cl-index="${i}">
+      <button onclick="removeClItem(${i})">×</button>
+    </div>`
+  ).join('');
+}
+
+function removeClItem(index) {
+  const rows = document.querySelectorAll('#m-cl-list .cl-edit-row');
+  rows[index].remove();
+  document.querySelectorAll('#m-cl-list .cl-edit-row').forEach((r,i) => {
+    r.querySelector('input').dataset.clIndex = i;
+    r.querySelector('button').setAttribute('onclick', `removeClItem(${i})`);
+  });
+}
+
+document.getElementById('m-cl-add').onclick = () => {
+  const list = document.getElementById('m-cl-list');
+  const i = list.children.length;
+  const row = document.createElement('div');
+  row.className = 'cl-edit-row';
+  row.innerHTML = `<input type="text" placeholder="清单项内容" data-cl-index="${i}"><button onclick="removeClItem(${i})">×</button>`;
+  list.appendChild(row);
+  row.querySelector('input').focus();
+};
+
+document.getElementById('m-cancel').onclick = () =>
+  document.getElementById('task-modal').classList.remove('open');
+
+document.getElementById('m-delete').onclick = async () => {
+  const tid = document.getElementById('m-task-id').value;
+  if (!tid || !confirm('确认删除这个任务？')) return;
+  await api('/api/task/delete', {id: tid});
+  document.getElementById('task-modal').classList.remove('open');
+};
+
+document.getElementById('m-save').onclick = async () => {
+  const tid = document.getElementById('m-task-id').value;
+  const pid = document.getElementById('m-project-id').value;
+  const title = document.getElementById('m-title').value.trim();
+  if (!title) { alert('请填写任务标题'); return; }
+  const checklist = [...document.querySelectorAll('#m-cl-list input[type=text]')]
+    .map(inp => ({text: inp.value.trim(), done: false}))
+    .filter(c => c.text);
+  if (tid) {
+    // preserve existing done state
+    const existing = (_snapshot.projects.flatMap(p=>p.tasks).find(t=>t.id===tid) || {}).checklist || [];
+    checklist.forEach((c,i) => { if (existing[i]) c.done = existing[i].done; });
+    await api('/api/task/update', {
+      id: tid, title,
+      priority: document.getElementById('m-priority').value,
+      due: document.getElementById('m-due').value,
+      nextAction: document.getElementById('m-next').value.trim(),
+      checklist,
+    });
+  } else {
+    await api('/api/task/add', {
+      project: pid, title,
+      priority: document.getElementById('m-priority').value,
+      due: document.getElementById('m-due').value,
+      nextAction: document.getElementById('m-next').value.trim(),
+      checklist,
+    });
+  }
+  document.getElementById('task-modal').classList.remove('open');
+};
+
+// ── Project modal ─────────────────────────────────────────────────────────────
+function openAddProject() {
+  document.getElementById('p-name').value = '';
+  document.getElementById('proj-modal').classList.add('open');
+  document.getElementById('p-name').focus();
+}
+document.getElementById('p-cancel').onclick = () =>
+  document.getElementById('proj-modal').classList.remove('open');
+document.getElementById('p-save').onclick = async () => {
+  const name = document.getElementById('p-name').value.trim();
+  if (!name) { alert('请填写项目名称'); return; }
+  await api('/api/project/add', {name});
+  document.getElementById('proj-modal').classList.remove('open');
+};
+
+// Close on backdrop click
+['task-modal','proj-modal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => {
+    if (e.target.id === id) document.getElementById(id).classList.remove('open');
+  });
+});
 
 // ── Polling ──────────────────────────────────────────────────────────────────
 let lastJson = null;
