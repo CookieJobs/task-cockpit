@@ -500,6 +500,29 @@
   </div>
 </div>
 
+<!-- Complete task modal -->
+<div class="modal-overlay" id="complete-modal">
+  <div class="modal">
+    <h2>完成任务 ✨</h2>
+    <input type="hidden" id="c-task-id">
+    <label>结果描述</label>
+    <textarea id="c-outcome" rows="2" placeholder="这件事做完了什么，有什么结果…"></textarea>
+    <label>简历级成就陈述 <span style="font-weight:400;color:#94A3B8">（动词开头，含结果/影响）</span></label>
+    <textarea id="c-cv" rows="3" placeholder="主导 / 推动 / 交付…，结果是…"></textarea>
+    <label>复盘反思 <span style="font-weight:400;color:#94A3B8">（可选）</span></label>
+    <textarea id="c-reflection" rows="2" placeholder="这次有什么收获或教训…"></textarea>
+    <label>CV 状态</label>
+    <select id="c-cv-status">
+      <option value="ready">✅ 已有具体成果，直接入库</option>
+      <option value="pending">⏳ 结果待补充，先存草稿</option>
+    </select>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="c-cancel">取消</button>
+      <button class="btn btn-primary" id="c-save">沉淀成就</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -680,6 +703,7 @@ function render(data) {
                 clHtml(t.id, t.checklist) +
               '</div>' +
               '<div class="task-actions">' +
+                '<button class="task-action-btn" title="完成任务" onclick="openCompleteTask(\'' + t.id + '\')">✅</button>' +
                 '<button class="task-action-btn" title="编辑" onclick="openEditTask(\'' + t.id + '\')">✏️</button>' +
               '</div>' +
             '</div>';
@@ -849,6 +873,42 @@ async function deleteProj(pid, name) {
   await api('/api/project/delete', {id: pid});
 }
 
+// ── Complete task modal ───────────────────────────────────────────────────────
+function openCompleteTask(tid) {
+  const t = _snapshot.projects.flatMap(p=>p.tasks).find(t=>t.id===tid)
+         || _snapshot.focus.find(t=>t.id===tid);
+  if (!t) return;
+  document.getElementById('c-task-id').value = tid;
+  document.getElementById('c-outcome').value = '';
+  document.getElementById('c-cv').value = '';
+  document.getElementById('c-reflection').value = '';
+  document.getElementById('c-cv-status').value = 'ready';
+  document.getElementById('complete-modal').classList.add('open');
+  document.getElementById('c-outcome').focus();
+}
+
+document.getElementById('c-cancel').onclick = () =>
+  document.getElementById('complete-modal').classList.remove('open');
+
+document.getElementById('c-save').onclick = async () => {
+  const tid = document.getElementById('c-task-id').value;
+  const outcome = document.getElementById('c-outcome').value.trim();
+  if (!outcome) { alert('请填写结果描述'); return; }
+  await api('/api/task/complete', {
+    id: tid,
+    outcome,
+    cv: document.getElementById('c-cv').value.trim(),
+    reflection: document.getElementById('c-reflection').value.trim(),
+    cv_status: document.getElementById('c-cv-status').value,
+  });
+  document.getElementById('complete-modal').classList.remove('open');
+};
+
+document.getElementById('complete-modal').addEventListener('click', e => {
+  if (e.target.id === 'complete-modal')
+    document.getElementById('complete-modal').classList.remove('open');
+});
+
 // ── Project modal ─────────────────────────────────────────────────────────────
 function openAddProject() {
   document.getElementById('p-name').value = '';
@@ -865,7 +925,7 @@ document.getElementById('p-save').onclick = async () => {
 };
 
 // Close on backdrop click
-['task-modal','proj-modal'].forEach(id => {
+['task-modal','proj-modal','complete-modal'].forEach(id => {
   document.getElementById(id).addEventListener('click', e => {
     if (e.target.id === id) document.getElementById(id).classList.remove('open');
   });

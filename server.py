@@ -74,6 +74,16 @@ class _Handler(BaseHTTPRequestHandler):
                 cockpit.delete_task(a["id"])
                 self._ok()
 
+            elif path == "/api/task/complete":
+                aid = cockpit.complete_task(
+                    a["id"],
+                    a.get("outcome", ""),
+                    a.get("reflection", ""),
+                    a.get("cv", ""),
+                    a.get("cv_status", "ready"),
+                )
+                self._ok({"id": aid})
+
             elif path == "/api/task/checklist":
                 # Toggle a single checklist item: {id, index, done}
                 tasks = cockpit.load_json("tasks.json", {})
